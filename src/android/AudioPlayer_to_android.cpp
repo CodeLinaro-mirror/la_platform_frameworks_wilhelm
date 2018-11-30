@@ -1686,7 +1686,9 @@ SLresult android_audioPlayer_realize(CAudioPlayer *pAudioPlayer, SLboolean async
             notificationFrames = 0;
         }
 
-        android::AudioTrack* pat = new android::AudioTrack(
+        android::AudioTrack* pat = new android::AudioTrack();
+
+        pat->set(
                 pAudioPlayer->mStreamType,                           // streamType
                 sampleRate,                                          // sampleRate
                 sles_to_android_sampleFormat(df_pcm),                // format
@@ -1695,8 +1697,13 @@ SLresult android_audioPlayer_realize(CAudioPlayer *pAudioPlayer, SLboolean async
                 policy,                                              // flags
                 audioTrack_callBack_pullFromBuffQueue,               // callback
                 (void *) pAudioPlayer,                               // user
-                notificationFrames,                                  // see comment above
-                pAudioPlayer->mSessionId);
+                notificationFrames,                                  // notificationFrame
+                0,                                                   // sharedBuffer
+                true,                                                // threadCanCallJava
+                pAudioPlayer->mSessionId,                            // sessionId
+                android::AudioTrack::TRANSFER_CALLBACK);             // transferType
+
+
         android::status_t status = pat->initCheck();
         if (status != android::NO_ERROR) {
             // AudioTracks are meant to be refcounted, so their dtor is protected.
@@ -1705,6 +1712,7 @@ SLresult android_audioPlayer_realize(CAudioPlayer *pAudioPlayer, SLboolean async
             SL_LOGE("AudioTrack::initCheck status %u", status);
             // FIXME should return a more specific result depending on status
             result = SL_RESULT_CONTENT_UNSUPPORTED;
+            pAudioPlayer->mTrackPlayer->mAudioTrack.clear();
             return result;
         }
 
