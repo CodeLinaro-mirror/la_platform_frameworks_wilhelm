@@ -29,7 +29,7 @@
 #define KEY_RECORDING_PRESET_PARAMSIZE  sizeof(SLuint32)
 #define KEY_PERFORMANCE_MODE_PARAMSIZE  sizeof(SLuint32)
 
-using android::content::AttributionSourceState;
+using android::media::permission::Identity;
 
 //-----------------------------------------------------------------------------
 // Internal utility functions
@@ -689,19 +689,13 @@ SLresult android_audioRecorder_realize(CAudioRecorder* ar, SLboolean async) {
     SL_LOGV("SLES channel mask %#x converted to Android mask %#x", df_pcm->channelMask,
             channelMask);
 
-    // TODO b/182392769: use attribution source util
-    AttributionSourceState attributionSource;
-    attributionSource.uid = VALUE_OR_FATAL(android::legacy2aidl_uid_t_int32_t(getuid()));
-    attributionSource.pid = VALUE_OR_FATAL(android::legacy2aidl_pid_t_int32_t(getpid()));
-    attributionSource.token = android::sp<android::BBinder>::make();
-
     // initialize platform-specific CAudioRecorder fields
     ar->mAudioRecord = new android::AudioRecord(
             ar->mRecordSource,     // source
             sampleRate,            // sample rate in Hertz
             sles_to_android_sampleFormat(df_pcm),               // format
             channelMask,           // channel mask
-            attributionSource,
+            Identity(),            // client identity (will be filled in later)
             0,                     // frameCount
             audioRecorder_callback,// callback_t
             (void*)ar,             // user, callback data, here the AudioRecorder
