@@ -227,11 +227,13 @@ cc_library_shared {
     ],
 
     shared_libs: [
+        "framework-permission-aidl-cpp",
         "liblog",
         "libutils",
         "libmedia",
         "libmedia_codeclist",
         "libaudioclient",
+        "libaudioclient_aidl_conversion",
         "libaudiofoundation",
         "libaudiomanager",
         "libbinder",
@@ -242,7 +244,6 @@ cc_library_shared {
         "libdl",
         "libandroid_runtime",
         "libstagefright_http_support",
-        "media_permission-aidl-cpp",
     ],
 
     include_dirs: [
