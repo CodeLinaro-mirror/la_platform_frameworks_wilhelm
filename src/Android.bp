@@ -39,6 +39,7 @@ cc_library_static {
 
     cflags: [
         "-Wno-initializer-overrides",
+        "-Wno-cast-function-type-mismatch",
         //"-Wno-missing-field-initializers",
         // optional, see comments in MPH_to.c:
         //"-DUSE_DESIGNATED_INITIALIZERS",
@@ -88,6 +89,7 @@ cc_library_shared {
         "-fvisibility=hidden",
         "-DLI_API=__attribute__((visibility(\"default\")))",
 
+        "-Wno-cast-function-type-mismatch",
         "-Wno-multichar",
         "-Wno-invalid-offsetof",
 
