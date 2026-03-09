@@ -622,7 +622,7 @@ SLresult audioPlayer_getPerformanceMode(CAudioPlayer* ap, SLuint32 *pMode) {
 
 //-----------------------------------------------------------------------------
 void audioPlayer_auxEffectUpdate(CAudioPlayer* ap) {
-    if ((ap->mTrackPlayer->mAudioTrack != 0) && (ap->mAuxEffect != 0)) {
+    if ((ap->mTrackPlayer->getAudioTrack() != 0) && (ap->mAuxEffect != 0)) {
         android_fxSend_attach(ap, true, ap->mAuxEffect, ap->mVolume.mLevel + ap->mAuxSendLevel);
     }
 }
@@ -876,8 +876,9 @@ static void sfplayer_handlePrefetchEvent(int event, int data1, int data2, void* 
 
     case android::GenericPlayer::kEventEndOfStream: {
         audioPlayer_dispatch_headAtEnd_lockPlay(ap, true /*set state to paused?*/, true);
-        if ((ap->mTrackPlayer->mAudioTrack != 0) && (!ap->mSeek.mLoopEnabled)) {
-            ap->mTrackPlayer->mAudioTrack->stop();
+        auto audioTrack = ap->mTrackPlayer->getAudioTrack();
+        if ((audioTrack != 0) && (!ap->mSeek.mLoopEnabled)) {
+            audioTrack->stop();
         }
         ap->mTrackPlayer->reportEvent(android::PLAYER_STATE_STOPPED, AUDIO_PORT_HANDLE_NONE);
         }
@@ -1593,7 +1594,7 @@ compatible: ;
 // AudioTrack to adjust performance mode based on actual output flags
 static void checkAndSetPerformanceModePost(CAudioPlayer *pAudioPlayer)
 {
-    audio_output_flags_t flags = pAudioPlayer->mTrackPlayer->mAudioTrack->getFlags();
+    audio_output_flags_t flags = pAudioPlayer->mTrackPlayer->getAudioTrack()->getFlags();
     switch (pAudioPlayer->mPerformanceMode) {
     case ANDROID_PERFORMANCE_MODE_LATENCY:
         if ((flags & (AUDIO_OUTPUT_FLAG_FAST | AUDIO_OUTPUT_FLAG_RAW)) ==
@@ -1737,11 +1738,11 @@ SLresult android_audioPlayer_realize(CAudioPlayer *pAudioPlayer, SLboolean async
             j_env->ExceptionClear();
             j_env->CallVoidMethod(pAudioPlayer->mAndroidConfiguration.mRoutingProxy,
                                   midRoutingProxy_connect,
-                                  (jlong)pAudioPlayer->mTrackPlayer->mAudioTrack.get());
+                                  (jlong)pAudioPlayer->mTrackPlayer->getAudioTrack().get());
             if (j_env->ExceptionCheck()) {
                 SL_LOGE("Java exception releasing player routing object.");
                 result = SL_RESULT_INTERNAL_ERROR;
-                pAudioPlayer->mTrackPlayer->mAudioTrack.clear();
+                pAudioPlayer->mTrackPlayer->clearAudioTrack();
                 return result;
             }
         }
@@ -2027,8 +2028,9 @@ SLresult android_audioPlayer_setPlaybackRateAndConstraints(CAudioPlayer *ap, SLp
         // get the content sample rate
         uint32_t contentRate = sles_to_android_sampleRate(ap->mSampleRateMilliHz);
         // apply the SL ES playback rate on the AudioTrack as a factor of its content sample rate
-        if (ap->mTrackPlayer->mAudioTrack != 0) {
-            ap->mTrackPlayer->mAudioTrack->setSampleRate(contentRate * (rate/1000.0f));
+        auto audioTrack = ap->mTrackPlayer->getAudioTrack();
+        if (audioTrack != 0) {
+            audioTrack->setSampleRate(contentRate * (rate/1000.0f));
         }
         }
         break;
@@ -2234,8 +2236,10 @@ void android_audioPlayer_setPlayState(CAudioPlayer *ap) {
     SLuint32 playState = ap->mPlay.mState;
 
     audio_port_handle_t deviceId = AUDIO_PORT_HANDLE_NONE;
-    if (ap->mTrackPlayer != 0 && ap->mTrackPlayer->mAudioTrack != 0) {
-        deviceId = ap->mTrackPlayer->mAudioTrack->getRoutedDeviceId();
+    android::sp<android::AudioTrack> audioTrack =
+        ap->mTrackPlayer != 0 ? ap->mTrackPlayer->getAudioTrack() : nullptr;
+    if (audioTrack != 0) {
+        deviceId = audioTrack->getRoutedDeviceId();
     }
 
     switch (ap->mAndroidObjType) {
@@ -2251,7 +2255,7 @@ void android_audioPlayer_setPlayState(CAudioPlayer *ap) {
             break;
         case SL_PLAYSTATE_PLAYING:
             SL_LOGV("setting AudioPlayer to SL_PLAYSTATE_PLAYING");
-            if (ap->mTrackPlayer->mAudioTrack != 0) {
+            if (audioTrack != 0) {
                 // instead of ap->mTrackPlayer->mAudioTrack->start();
                 if (!ap->mDeferredStart) {
                     // state change
@@ -2307,19 +2311,20 @@ void android_audioPlayer_usePlayEventMask(CAudioPlayer *ap) {
     /*switch (ap->mAndroidObjType) {
     case AUDIOPLAYER_FROM_PCM_BUFFERQUEUE:*/
 
+    auto audioTrack = ap->mTrackPlayer->getAudioTrack();
     if (ap->mAPlayer != 0) {
-        assert(ap->mTrackPlayer->mAudioTrack == 0);
+        assert(audioTrack == 0);
         ap->mAPlayer->setPlayEvents((int32_t) eventFlags, (int32_t) pPlayItf->mMarkerPosition,
                 (int32_t) pPlayItf->mPositionUpdatePeriod);
         return;
     }
 
-    if (ap->mTrackPlayer->mAudioTrack == 0) {
+    if (audioTrack == 0) {
         return;
     }
 
     if (eventFlags & SL_PLAYEVENT_HEADATMARKER) {
-        ap->mTrackPlayer->mAudioTrack->setMarkerPosition(
+        audioTrack->setMarkerPosition(
             (uint32_t) (
                 (int64_t) pPlayItf->mMarkerPosition *
                 sles_to_android_sampleRate(ap->mSampleRateMilliHz) /
@@ -2327,16 +2332,16 @@ void android_audioPlayer_usePlayEventMask(CAudioPlayer *ap) {
             ));
     } else {
         // clear marker
-        ap->mTrackPlayer->mAudioTrack->setMarkerPosition(0);
+        audioTrack->setMarkerPosition(0);
     }
 
     if (eventFlags & SL_PLAYEVENT_HEADATNEWPOS) {
-         ap->mTrackPlayer->mAudioTrack->setPositionUpdatePeriod(
+         audioTrack->setPositionUpdatePeriod(
                 (uint32_t)((((int64_t)pPlayItf->mPositionUpdatePeriod
                 * sles_to_android_sampleRate(ap->mSampleRateMilliHz)))/1000));
     } else {
         // clear periodic update
-        ap->mTrackPlayer->mAudioTrack->setPositionUpdatePeriod(0);
+        audioTrack->setPositionUpdatePeriod(0);
     }
 
     if (eventFlags & SL_PLAYEVENT_HEADATEND) {
@@ -2387,16 +2392,18 @@ void android_audioPlayer_getPosition(IPlay *pPlayItf, SLmillisecond *pPosMsec) {
     CAudioPlayer *ap = (CAudioPlayer *)pPlayItf->mThis;
     switch (ap->mAndroidObjType) {
 
-      case AUDIOPLAYER_FROM_PCM_BUFFERQUEUE:
-        if (ap->mSampleRateMilliHz == UNKNOWN_SAMPLERATE || ap->mTrackPlayer->mAudioTrack == 0) {
+      case AUDIOPLAYER_FROM_PCM_BUFFERQUEUE: {
+        auto audioTrack = ap->mTrackPlayer->getAudioTrack();
+        if (ap->mSampleRateMilliHz == UNKNOWN_SAMPLERATE || audioTrack == 0) {
             *pPosMsec = 0;
         } else {
             uint32_t positionInFrames;
-            ap->mTrackPlayer->mAudioTrack->getPosition(&positionInFrames);
+            audioTrack->getPosition(&positionInFrames);
             *pPosMsec = ((int64_t)positionInFrames * 1000) /
                     sles_to_android_sampleRate(ap->mSampleRateMilliHz);
         }
         break;
+	  }
 
       case AUDIOPLAYER_FROM_TS_ANDROIDBUFFERQUEUE:    // intended fall-through
       case AUDIOPLAYER_FROM_URIFD:
@@ -2486,9 +2493,10 @@ void android_audioPlayer_bufferQueue_onRefilled_l(CAudioPlayer *ap) {
     // the AudioTrack associated with the AudioPlayer receiving audio from a PCM buffer
     // queue was stopped when the queue become empty, we restart as soon as a new buffer
     // has been enqueued since we're in playing state
-    if (ap->mTrackPlayer->mAudioTrack != 0) {
+    auto audioTrack = ap->mTrackPlayer->getAudioTrack();
+    if (audioTrack != 0) {
         ap->mTrackPlayer->reportEvent(android::PLAYER_STATE_STARTED,
-                            ap->mTrackPlayer->mAudioTrack->getRoutedDeviceId());
+                            audioTrack->getRoutedDeviceId());
         // instead of ap->mTrackPlayer->mAudioTrack->start();
         ap->mDeferredStart = true;
     }
@@ -2523,11 +2531,13 @@ SLresult android_audioPlayer_bufferQueue_onClear(CAudioPlayer *ap) {
     switch (ap->mAndroidObjType) {
     //-----------------------------------
     // AudioTrack
-    case AUDIOPLAYER_FROM_PCM_BUFFERQUEUE:
-        if (ap->mTrackPlayer->mAudioTrack != 0) {
-            ap->mTrackPlayer->mAudioTrack->flush();
+    case AUDIOPLAYER_FROM_PCM_BUFFERQUEUE: {
+        auto audioTrack = ap->mTrackPlayer->getAudioTrack();
+        if (audioTrack != 0) {
+            audioTrack->flush();
         }
         break;
+	}
     default:
         result = SL_RESULT_INTERNAL_ERROR;
         break;
